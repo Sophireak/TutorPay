@@ -9,6 +9,7 @@ use App\Services\CollectionReport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class FeeController extends Controller
@@ -59,7 +60,12 @@ class FeeController extends Controller
         $this->authorize('delete', $fee);
 
         $month = $fee->period_month->format('Y-m');
-        $fee->delete();
+
+        // Deleting a fee period removes its payments as well; keep the
+        // whole financial record consistent.
+        DB::transaction(function () use ($fee): void {
+            $fee->delete();
+        });
 
         return redirect()
             ->route('fees.index', ['month' => $month])

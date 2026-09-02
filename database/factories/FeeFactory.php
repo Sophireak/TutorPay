@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\FeeStatus;
 use App\Models\Fee;
 use App\Models\Student;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -23,6 +24,7 @@ class FeeFactory extends Factory
             'student_id' => Student::factory(),
             'period_month' => $month,
             'amount' => fake()->randomElement([1500, 2000, 2500, 3000]),
+            'status' => FeeStatus::Unpaid,
             'due_date' => $month->copy()->day(10),
             'notes' => null,
         ];

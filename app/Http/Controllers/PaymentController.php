@@ -8,6 +8,7 @@ use App\Models\Fee;
 use App\Models\Payment;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class PaymentController extends Controller
@@ -66,14 +67,20 @@ class PaymentController extends Controller
 
         $this->authorize('pay', $fee);
 
-        $payment = new Payment($request->safe()->only([
-            'amount', 'paid_on', 'method', 'reference', 'notes',
-        ]));
+        // Financial records are written inside a transaction: the payment
+        // row and the fee period's status update commit atomically.
+        $payment = DB::transaction(function () use ($fee, $request): Payment {
+            $payment = new Payment($request->safe()->only([
+                'amount', 'paid_on', 'method', 'reference', 'notes',
+            ]));
 
-        $payment->student()->associate($fee->student);
-        $payment->user()->associate($request->user());
+            $payment->student()->associate($fee->student);
+            $payment->user()->associate($request->user());
 
-        $fee->payments()->save($payment);
+            $fee->payments()->save($payment);
+
+            return $payment;
+        });
 
         return redirect()
             ->route('students.show', $fee->student)
@@ -85,7 +92,12 @@ class PaymentController extends Controller
         $this->authorize('delete', $payment);
 
         $student = $payment->student;
-        $payment->delete();
+
+        // Deleting a financial record also refreshes the fee period's
+        // status; do both atomically.
+        DB::transaction(function () use ($payment): void {
+            $payment->delete();
+        });
 
         return redirect()
             ->route('students.show', $student)
