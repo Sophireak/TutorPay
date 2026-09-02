@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Enums\PaymentMethod;
+use App\Models\Fee;
 use App\Models\Payment;
 use App\Models\Student;
 use App\Models\User;
@@ -17,6 +18,10 @@ class DatabaseSeeder extends Seeder
 
     /**
      * Seed a demo tutor with students, three months of fees and part payments.
+     *
+     * Model events are disabled while seeding (see WithoutModelEvents), so
+     * the denormalised fields that are normally maintained by model events
+     * (student_code, fee period status) are kept consistent explicitly.
      */
     public function run(MonthlyFeeGenerator $generator): void
     {
@@ -29,6 +34,13 @@ class DatabaseSeeder extends Seeder
             ->count(8)
             ->for($tutor)
             ->create(['enrolled_on' => Carbon::now()->subMonths(6)->toDateString()]);
+
+        // Safety net: any student without a code gets a deterministic one.
+        $tutor->students()->whereNull('student_code')->get()->each(function (Student $student): void {
+            $student->forceFill([
+                'student_code' => 'STU-'.str_pad((string) $student->id, 4, '0', STR_PAD_LEFT),
+            ])->saveQuietly();
+        });
 
         foreach ([2, 1, 0] as $offset) {
             $month = Carbon::now()->startOfMonth()->subMonths($offset);
@@ -53,5 +65,12 @@ class DatabaseSeeder extends Seeder
                 $fee->payments()->save($payment);
             }
         });
+
+        // Refresh the denormalised status of every seeded fee period so
+        // the stored status matches the payments that were created.
+        Fee::query()
+            ->whereHas('student', fn ($query) => $query->where('user_id', $tutor->id))
+            ->get()
+            ->each->refreshStatus();
     }
 }

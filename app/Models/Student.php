@@ -17,6 +17,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'phone',
     'email',
     'batch',
+    'grade',
+    'class_time',
+    'student_code',
     'monthly_fee',
     'status',
     'enrolled_on',
@@ -37,6 +40,28 @@ class Student extends Model
             'enrolled_on' => 'date',
             'status' => StudentStatus::class,
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // Every student needs a unique, human-friendly code. When one is
+        // not supplied (form, factory, seeder) a deterministic one is
+        // generated from the next expected primary key.
+        static::creating(function (Student $student): void {
+            if (blank($student->student_code)) {
+                $student->student_code = static::nextStudentCode();
+            }
+        });
+    }
+
+    /**
+     * The next available student code, e.g. "STU-0042".
+     */
+    public static function nextStudentCode(): string
+    {
+        $next = (int) static::query()->max('id') + 1;
+
+        return 'STU-'.str_pad((string) $next, 4, '0', STR_PAD_LEFT);
     }
 
     /**
@@ -94,9 +119,11 @@ class Student extends Model
 
         $query->where(function (Builder $query) use ($term): void {
             $query->where('name', 'like', "%{$term}%")
+                ->orWhere('student_code', 'like', "%{$term}%")
                 ->orWhere('guardian_name', 'like', "%{$term}%")
                 ->orWhere('phone', 'like', "%{$term}%")
-                ->orWhere('batch', 'like', "%{$term}%");
+                ->orWhere('batch', 'like', "%{$term}%")
+                ->orWhere('grade', 'like', "%{$term}%");
         });
     }
 
