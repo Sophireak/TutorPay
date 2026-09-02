@@ -14,12 +14,21 @@ class StudentController extends Controller
 {
     public function index(Request $request): View
     {
+        $tutor = $request->user();
+
+        $gradeFilter = $request->string('grade')->value();
+        $statusFilter = $request->string('status')->value();
+
         $students = Student::query()
-            ->ownedBy($request->user())
+            ->ownedBy($tutor)
             ->search($request->string('search')->value())
             ->when(
-                in_array($request->string('status')->value(), StudentStatus::values(), true),
-                fn ($query) => $query->where('status', $request->string('status')->value())
+                $gradeFilter !== '',
+                fn ($query) => $query->where('grade', $gradeFilter)
+            )
+            ->when(
+                in_array($statusFilter, StudentStatus::values(), true),
+                fn ($query) => $query->where('status', $statusFilter)
             )
             ->withSum('fees as billed_total', 'amount')
             ->withSum('payments as paid_total', 'amount')
@@ -27,10 +36,21 @@ class StudentController extends Controller
             ->paginate(15)
             ->withQueryString();
 
+        // Distinct grades for the filter dropdown (only this tutor's students)
+        $grades = Student::query()
+            ->ownedBy($tutor)
+            ->whereNotNull('grade')
+            ->where('grade', '!=', '')
+            ->distinct()
+            ->orderBy('grade')
+            ->pluck('grade');
+
         return view('students.index', [
             'students' => $students,
+            'grades' => $grades,
             'search' => $request->string('search')->value(),
-            'status' => $request->string('status')->value(),
+            'grade' => $gradeFilter,
+            'status' => $statusFilter,
         ]);
     }
 
@@ -55,8 +75,9 @@ class StudentController extends Controller
         $this->authorize('view', $student);
 
         $student->load([
-            'fees' => fn ($query) => $query->withSum('payments as payments_total', 'amount')->orderByDesc('period_month'),
-            'payments' => fn ($query) => $query->with('fee')->latest('paid_on')->latest('id'),
+            'fees' => fn ($query) => $query
+                ->with('payments')
+                ->orderByDesc('period_month'),
         ]);
 
         return view('students.show', [
@@ -82,6 +103,24 @@ class StudentController extends Controller
         return redirect()
             ->route('students.show', $student)
             ->with('status', 'Student updated.');
+    }
+
+    /**
+     * Toggle a student's active / inactive status.
+     */
+    public function toggle(Request $request, Student $student): RedirectResponse
+    {
+        $this->authorize('update', $student);
+
+        $student->update([
+            'status' => $student->isActive() ? StudentStatus::Inactive : StudentStatus::Active,
+        ]);
+
+        $label = $student->fresh()->isActive() ? 'activated' : 'deactivated';
+
+        return redirect()
+            ->back()
+            ->with('status', "{$student->name} has been {$label}.");
     }
 
     public function destroy(Student $student): RedirectResponse

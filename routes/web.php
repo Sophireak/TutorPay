@@ -15,6 +15,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
     Route::resource('students', StudentController::class);
+    Route::patch('/students/{student}/toggle', [StudentController::class, 'toggle'])->name('students.toggle');
 
     Route::get('/fees', [FeeController::class, 'index'])->name('fees.index');
     Route::post('/fees', [FeeController::class, 'store'])->name('fees.store');
